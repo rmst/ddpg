@@ -1,0 +1,2 @@
+#!/bin/bash
+python run.py --exe --exe --f_test 0 --render True
