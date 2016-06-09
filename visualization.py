@@ -1,5 +1,5 @@
 '''
-contains visualization routines building on top of matplotlib
+contains visualization routines using matplotlib
 '''
 import matplotlib
 matplotlib.use("agg")
@@ -14,8 +14,6 @@ def as2d(a):
     return a[:,np.newaxis]
   else:
     return a
-
-
 
 
 import tensorflow as tf

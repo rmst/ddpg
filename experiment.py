@@ -31,7 +31,13 @@ def _parse_all(parser):
       opt = arg[2:]
       d[opt] = None
     elif d[opt] is None:
-      d[opt] = eval(arg)
+      try:
+        d[opt] = int(arg)
+      except:
+        try:
+          d[opt] = float(arg)
+        except:
+          d[opt] = arg
 
   return d
 

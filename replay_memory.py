@@ -1,6 +1,7 @@
 import numpy as np
 import random
 
+# TODO: make this list-based (i.e. variable sized)
 class ReplayMemory:
   def __init__(self, size, dimO, dimA, dtype=np.float32):
     self.size = size

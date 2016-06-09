@@ -1,10 +1,7 @@
 
-
-
+# recursive copy
 def copy(src, dst, symlinks = False, ignore = None):
-  import os
   import shutil
-  import stat
   ign = shutil.ignore_patterns(ignore)
   copytree(src,dst,symlinks,ign)
 
@@ -37,10 +34,12 @@ def copytree(src, dst, symlinks = False, ignore = None):
     else:
       shutil.copy2(s, d)
 
+
+# forcefully free port
 def free_port(port):
   import signal
   import subprocess
-
+  import os
   for lsof in ["lsof","/usr/sbin/lsof"]:
     try:        
       out = subprocess.check_output([lsof,"-t","-i:"+str(port)])

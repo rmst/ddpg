@@ -15,29 +15,8 @@ if args.get('xvfb',False):
 import ddpg
 import gym
 import numpy as np
-import doublelink
-def norm_step(env,a):
-  # normalize states and actions
-  acsp = env.action_space
-  obsp = env.observation_space
-  if not type(acsp)==gym.spaces.box.Box:
-    raise RuntimeError('Environment with continous action space (i.e. Box) required.')
+import filter_env
 
-  h = acsp.high
-  l = acsp.low
-  sc = h-l
-  c = (h+l)/2.
-
-  obs, reward, term, info = env.step(np.clip(sc*a+c,l,h))
-
-  h = obsp.high
-  l = obsp.low
-  sc = h-l
-  c = (h+l)/2.
-
-  obs = (obs-c) / sc
-
-  return obs, reward, term, info
 
 
 class Experiment:
@@ -45,10 +24,15 @@ class Experiment:
   def run(self,t_train = 1000000,t_warmup=20000,f_test=20,env='Pendulum-v0',render=False,**kwargs):
     self.t_warmup = t_warmup
     self.t_log = 103
-    #self.env = gym.make(s.env)
-    #from gym.envs.classic_control.dl import DoubleLinkEnv
-    self.env = doublelink.DoubleLinkEnv()
-    # self.env.monitor.start('./monitor/',video_callable=lambda _: False) TODO: fix on cluster
+
+    if env == 'DoubleLink':
+      self.env = filter_env.DoubleLinkEnv()
+    else:
+      self.env = filter_env.makeFilteredEnv(gym.make(env))
+
+    self.env.monitor.start('./monitor/',video_callable=lambda _: False)
+    gym.logger.setLevel(gym.logging.WARNING)
+
     dimO = self.env.observation_space.shape
     dimA = self.env.action_space.shape
     print('dimO: '+str(dimO) +'  dimA: '+str(dimA))
@@ -66,7 +50,7 @@ class Experiment:
 
 
   def run_episode(self,test=True,t_max=200,render=False):
-    self.env.monitor.configure(lambda _: False) # TODO: capture video only at test time
+    self.env.monitor.configure(lambda _: test) # TODO: capture video at test time
     observation = self.env.reset()
     self.agent.reset(observation)
     R = 0 # return
@@ -77,7 +61,7 @@ class Experiment:
 
       action = self.agent.act(test=test,logging=self.agent.t%self.t_log==0)
 
-      observation, reward, term, info = norm_step(self.env,action)
+      observation, reward, term, info = self.env.step(action)
       term = (t >= t_max) or term
 
       self.agent.observe(reward,term,observation,test=test)
