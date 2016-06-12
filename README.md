@@ -3,9 +3,22 @@ Paper: [Continuous control with deep reinforcement learning](http://arxiv.org/ab
 
 *This is a only a preview, a proper version will be released soon*
 
-## Requirements
-python
+## Installation
 ```bash
-pip install pyglet # for rendering
-pip install pyvirtualdisplay # xvfb wrapper for headless rendering
+pip install pyglet # for gym rendering
+pip install jupyter # for visualization (optional)
 ```
+
+## Usage
+Example:
+```bash
+python run.py --outdir ../ddpg-results/experiment1 --env Reacher-v1
+```
+Enter `python run.py -h` to get a complete overview.
+
+## Visualization
+Example:
+```bash
+python dashboard.py --exdir ../ddpg-results
+```
+Enter `python dashboard.py -h` to get a complete overview.
