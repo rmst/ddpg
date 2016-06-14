@@ -1,9 +1,6 @@
 import numpy as np
 import gym
 
-import doublelink
-DoubleLinkEnv = doublelink.DoubleLinkEnv
-
 def makeFilteredEnv(env):
   """ crate a new environment class with actions and states normalized to [-1,1] """
   acsp = env.action_space

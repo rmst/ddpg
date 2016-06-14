@@ -7,13 +7,13 @@ import ddpg
 import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
-flags.DEFINE_string('gymkey','','OpenAi Gym key')
-flags.DEFINE_string('env','','OpenAi environment')
-flags.DEFINE_integer('warmup',20000,'OpenAi environment')
+flags.DEFINE_string('gymkey','','gym key')
+flags.DEFINE_string('env','','gym environment')
+flags.DEFINE_integer('warmup',20000,'time without training but only filling the replay memory')
+flags.DEFINE_integer('test',10000,'time between tests')
 # ...
 # TODO: make command line options
 t_train = 1000000
-t_test=10000
 n_test=20
 render=False
 
@@ -23,16 +23,15 @@ class Experiment:
     self.t_log = 103
     self.t_global = 0
 
-    if FLAGS.env == 'DoubleLink':
-      self.env = filter_env.DoubleLinkEnv()
-    else:
-      self.env = filter_env.makeFilteredEnv(gym.make(FLAGS.env))
+    # create filtered environment
+    self.env = filter_env.makeFilteredEnv(gym.make(FLAGS.env))
 
     self.env.monitor.start(FLAGS.outdir+'/monitor/',video_callable=lambda _: False)
     gym.logger.setLevel(gym.logging.WARNING)
 
     dimO = self.env.observation_space.shape
     dimA = self.env.action_space.shape
+
     print('dimO: '+str(dimO) +'  dimA: '+str(dimA))
 
     self.agent = ddpg.Agent(dimO=dimO,dimA=dimA)
@@ -42,6 +41,7 @@ class Experiment:
 
     # main loop
     while self.t_global < t_train:
+
       # test
       t_last_test = self.t_global
       R = np.mean([self.run_episode(test=True,render=render) for _ in range(n_test)])
@@ -50,7 +50,7 @@ class Experiment:
       print('Average return '+str(R)+ ' after '+str(self.t_global)+' timesteps of training')
 
       # train
-      while self.t_global-t_last_test <  t_test:
+      while self.t_global-t_last_test <  FLAGS.test:
         self.run_episode(test=False)
 
     self.env.monitor.close()

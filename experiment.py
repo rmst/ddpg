@@ -146,7 +146,7 @@ def execute(fun, outdir):
     xwrite(outdir,info)
     print('elapsed seconds: ' + str(elapsed))
     if elapsed <= FLAGS.autodel*60.:
-      print('delete because del ' + str(FLAGS.autodel) + " minutes")
+      print('delete because runtime < ' + str(FLAGS.autodel) + " minutes")
       shutil.rmtree(outdir,ignore_errors=False)
 
 

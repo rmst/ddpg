@@ -90,8 +90,7 @@ class Agent:
     # q loss
     mb_td_error = tf.square(q - q_target)
     mean_td_error = tf.reduce_mean(mb_td_error, 0)
-    wd_q = tf.add_n([ql2 * tf.nn.l2_loss(var)
-             for var in self.theta_q])  # weight decay
+    wd_q = tf.add_n([ql2 * tf.nn.l2_loss(var) for var in self.theta_q])  # weight decay
     loss_q = mean_td_error + wd_q
     # q optimization
     optim_q = tf.train.AdamOptimizer(learning_rate=lrq)
