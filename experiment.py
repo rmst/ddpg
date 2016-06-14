@@ -135,7 +135,7 @@ def execute(fun, outdir):
     fun()
 
     info['run_status'] = 'finished'
-  except Exception as e:
+  except:
     import traceback
     traceback.print_exc()
     info['run_status'] = 'aborted'
