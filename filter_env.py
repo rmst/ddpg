@@ -29,7 +29,7 @@ def makeFilteredEnv(env):
         self.observation_space = gym.spaces.Box(-o1, o1)
       
 
-    def _step(self,action):
+    def step(self,action):
       
       h = acsp.high
       l = acsp.low
@@ -38,7 +38,7 @@ def makeFilteredEnv(env):
 
       ac = np.clip(sc*action+c,l,h)
 
-      obs, reward, term, info = env_type._step(self,ac) # super function
+      obs, reward, term, info = env_type.step(self,ac) # super function
 
       if self.filter_obs:
         h = obsp.high
@@ -46,6 +46,13 @@ def makeFilteredEnv(env):
         sc = h-l
         c = (h+l)/2.
         obs = (obs-c) / sc
+
+
+      # reward -= 1 # exploration in the face of uncertainty
+
+      # TODO: remove
+      # obs[6] = obs[6] / 40.
+      # obs[7] = obs[7] / 40.
 
       return obs, reward, term, info
 

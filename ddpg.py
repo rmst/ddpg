@@ -1,28 +1,31 @@
-
-import visualization as vis
 import tensorflow as tf
 import ddpg_nets_dm as nets_dm
 from replay_memory import ReplayMemory
 import numpy as np
 
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+flags.DEFINE_float('ou_sigma',0.2,'')
+# ...
+# TODO: make command line options
+tau =.001
+discount =.99
+pl2 =.0
+ql2 =.01
+lrp =.0001
+lrq =.001
+ou_theta = 0.15
+ou_sigma = 0.2
+rm_size = 500000
+rm_dtype = 'float32'
+mb_size = 32
+threads = 4
+
 # DDPG Agent
 # 
 class Agent:
 
-  def __init__(self, dimO, dimA,
-    nets=nets_dm,
-    tau =.001, # fdsla
-    discount =.99, 
-    pl2 =.0, 
-    ql2 =.01, 
-    lrp =.0001, 
-    lrq =.001, 
-    ou_theta = 0.15, 
-    ou_sigma = 0.2, 
-    rm_size = 500000, 
-    rm_dtype = 'float32',
-    mb_size = 32,
-    threads = 4,**kwargs):
+  def __init__(self, dimO, dimA, nets=nets_dm,**kwargs):
     dimA = list(dimA)
     dimO = list(dimO)
 
@@ -83,7 +86,7 @@ class Agent:
     act2, sum_p2 = nets.policy(obs2, theta=self.theta_pt)
     q2, sum_q2 = nets.qfunction(obs2, act2, theta=self.theta_qt)
     q_target = tf.stop_gradient(tf.select(term2,rew,rew + discount*q2))
-    # = tf.stop_gradient(rew + discount * q2)
+    # q_target = tf.stop_gradient(rew + discount * q2)
     # q loss
     mb_td_error = tf.square(q - q_target)
     mean_td_error = tf.reduce_mean(mb_td_error, 0)
@@ -102,13 +105,12 @@ class Agent:
     log_obs = [] if dimO[0]>20 else [tf.histogram_summary("obs/"+str(i),obs[:,i]) for i in range(dimO[0])]
     log_act = [] if dimA[0]>20 else [tf.histogram_summary("act/inf"+str(i),act_test[:,i]) for i in range(dimA[0])]
     log_act2 = [] if dimA[0]>20 else [tf.histogram_summary("act/train"+str(i),act_train[:,i]) for i in range(dimA[0])]
-    log_misc = [sum_p, sum_qq, tf.histogram_summary("qfunction/td_error", mb_td_error)]
+    log_misc = [sum_p, sum_qq, tf.histogram_summary("td_error", mb_td_error)]
     log_grad = [grad_histograms(grads_and_vars_p), grad_histograms(grads_and_vars_q)]
     log_train = log_obs + log_act + log_act2 + log_misc + log_grad
 
     # initialize tf log writer
-    self.writer = tf.train.SummaryWriter(
-      "./tf", self.sess.graph, flush_secs=20)
+    self.writer = tf.train.SummaryWriter(FLAGS.outdir+"/tf", self.sess.graph, flush_secs=20)
 
     # init replay memory for recording episodes
     max_ep_length = 10000
@@ -123,7 +125,7 @@ class Agent:
 
     # initialize tf variables
     self.saver = tf.train.Saver(max_to_keep=1)
-    ckpt = tf.train.latest_checkpoint("./tf")
+    ckpt = tf.train.latest_checkpoint(FLAGS.outdir+"/tf")
     if ckpt:
       self.saver.restore(self.sess,ckpt)
     else:
@@ -135,7 +137,7 @@ class Agent:
 
   def reset(self, obs):
     self._reset()
-    self.observation = np.squeeze(obs)  # initial observation
+    self.observation = obs  # initial observation
 
   def act(self, test=False, logging=False):
     obs = np.expand_dims(self.observation, axis=0)
@@ -144,39 +146,24 @@ class Agent:
     return self.action
 
   def observe(self, rew, term, obs2, test=False):
-    
-    rew = self.reward(rew) # internal reward # TODO: outsource
 
     if not test:
       self.t = self.t + 1
       self.rm.enqueue(self.observation, term, self.action, rew)
 
       # save parameters etc.
-      if (self.t+45000) % 50000 == 0: # TODO: correct
-        s = self.saver.save(self.sess,"./tf/c",self.t)
-        print("DDPG Checkpoint: " + s)
+      # if (self.t+45000) % 50000 == 0: # TODO: correct
+      #   s = self.saver.save(self.sess,FLAGS.outdir+"f/tf/c",self.t)
+      #   print("DDPG Checkpoint: " + s)
 
 
-    self.observation = np.squeeze(obs2)  # current observation <- obs2
+    self.observation = obs2  # current observation <- obs2
     return rew
 
   def train(self, logging=False):
     obs, act, rew, obs2, term2, info = self.rm.minibatch(size=self.mb_size)
     self._train(obs,act,rew,obs2,term2,log=logging,global_step=self.t)
 
-
-  def reward(self,external_reward,logging=False):
-    """ calculate internal reward """
-
-    ra = - .1 * np.mean(np.square(self.action))
-    rint = external_reward + ra
-
-    if logging:
-      self.write_scalar('reward/ext',external_reward)
-      self.write_scalar('reward/a',ra)
-      self.write_scalar('reward/rint',rint)
-
-    return rint
 
   def write_scalar(self,tag,val):
     s = tf.Summary(value=[tf.Summary.Value(tag=tag,simple_value=val)])

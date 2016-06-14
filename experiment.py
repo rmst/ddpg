@@ -1,4 +1,3 @@
-
 import time
 from datetime import datetime
 import subprocess
@@ -7,72 +6,47 @@ import json
 import os
 import sys
 
-def xwrite(path,data):
-  """
-  write info file
+import tensorflow as tf 
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+flags.DEFINE_string('outdir', '', 'destination folder for results')
+flags.DEFINE_boolean('copy',False, 'copy code folder to outdir')
+flags.DEFINE_string('tag', '', 'name tag for experiment')
+flags.DEFINE_boolean('job',False, 'submit slurm job')
+flags.DEFINE_boolean('nvd',False, 'run on Nvidia-Node')
+flags.DEFINE_float('autodel', 0., 'auto delete experiments terminating before DEL minutes')
 
-  The info file contains information about the status and parameters of the experiment.
-  It can be used to display experiment details in a dashboard.
-  """
-  with open(path+'/ezex.json','w+') as f:
-    json.dump(data,f)
+def run(main=None):
+  argv = sys.argv
+  f = flags.FLAGS
+  f._parse_flags()
 
-def xread(path):
-  with open(path+'/ezex.json') as f:
-    return json.load(f)
+  script = sys.modules['__main__'].__file__
+  scriptdir, scriptfile = os.path.split(script)
 
-def _parse_all(parser):
-  #import argparse
-  args,unknown = parser.parse_known_args()
-  d = {}
-  d.update(args.__dict__)
-  for arg in unknown:
-    if arg.startswith('--'):
-      opt = arg[2:]
-      d[opt] = None
-    elif d[opt] is None:
-      try:
-        d[opt] = int(arg)
-      except:
-        try:
-          d[opt] = float(arg)
-        except:
-          d[opt] = arg
+  if FLAGS.outdir[-1] == '+':
+    exdir = FLAGS.outdir[:-1]
+    outdir = create(scriptdir, exdir)
+    i = argv.index('--outdir')
+    argv[i+1] = outdir # TODO: handle --outdir=... case
+    FLAGS.outdir = outdir
 
-  return d
+  elif not os.path.exists(FLAGS.outdir):
+    os.mkdir(FLAGS.outdir)
 
-def parse(parser,src=None):
-  """
-  WARNING: this might involve restart of the script 
-  """
+  print("outdir: " + FLAGS.outdir)
 
-  if not src:
-    # get filename of caller script
-    import inspect
-    src = inspect.getfile(sys._getframe(1))
+  script = (FLAGS.outdir + '/' + scriptfile) if FLAGS.copy else script
+  argv[0] = script
 
-  # experiment arguments
-  rn = parser.add_argument_group('run')
-  rn.add_argument('--dst',default=os.path.split(src)[0][:-2]+'-runs',help='destination folder for results')
-  rn.add_argument('--tag',default='',help='name tag for experiment')
-  rn.add_argument('--job',action='store_true',help='submit slurm job')
-  rn.add_argument('--nvd',action='store_true',help='run on Nvidia-Node')
-  rn.add_argument('-c','--copy',action='store_true',help='copy contents of script folder to dst')
-  rn.add_argument('--del',default=0.,type=float,help='auto delete experiments terminating before DEL minutes')
-  rn.add_argument('--xvfb',action='store_true',help='run inside xvfb')
-  rn.add_argument('--exe',action='count',help='internal command')
-
-  kwargs = _parse_all(parser)
-  if kwargs['exe']==2:
-    return kwargs
-  elif kwargs['exe']==1:
-    execute(os.getcwd(),**kwargs) # WARNING: this involves restart of the script 
-    sys.exit()
+  if FLAGS.job:
+    argv.remove('--job')
+    submit(argv, FLAGS.outdir)
   else:
-    submit(src,**kwargs) # WARNING: this involves restart of the script 
-    sys.exit()
+    main = main or sys.modules['__main__'].main
+    execute(main, FLAGS.outdir)
 
-def create(run_folder,exfolder,tag='',copy=False,**kwargs):
+def create(run_folder,exfolder):
   ''' create unique experiment folder '''
   
   # generate unique name and create folder
@@ -80,7 +54,7 @@ def create(run_folder,exfolder,tag='',copy=False,**kwargs):
 
   rf = os.path.basename(run_folder)
   dstr = datetime.now().strftime('%Y%m%d_%H%M_%S')
-  basename =  dstr+'_'+rf+'_'+tag
+  basename =  dstr+'_'+rf+'_'+ FLAGS.tag
   name = basename
   i = 1
   while name in os.listdir(exfolder):
@@ -89,123 +63,100 @@ def create(run_folder,exfolder,tag='',copy=False,**kwargs):
     if i > 100:
       raise RuntimeError('Could not create unique experiment folder')
       
-  path = exfolder+'/'+name
+  path = os.path.join(exfolder, name)
   os.mkdir(path)
 
   # copy program to folder
-  if copy:
+  if FLAGS.copy:
     rcopy(run_folder,path,symlinks=True,ignore='.*')
 
   return path
 
 
-def submit(src,dst,job=False,prerun='',copy=False,**kwargs):
+def submit(argv, outdir):
   """
-  create new folder for results in <dst> and then either run <src> locally or submit a slurm job
+  submit a slurm job
   """
-  src = os.path.abspath(src)
-  dst = os.path.abspath(dst)
-  folder,script = os.path.split(src)
-  path = create(folder,dst,copy=copy,**kwargs)
-  script = (path + '/' + script) if copy else src
+  prerun = ''
   python = sys.executable
 
-
-  # xvfb = 'xvfb-run -n 0 -s "-screen 0 1400x900x24" ' if kwargs['exe']==2 and kwargs['xvfb'] else ''
- 
-
-  run_cmd = ('cd '+ path +'; '+
-    prerun +' '+python+ ' ' +script+ ' ' + ' '.join(sys.argv[1:]) + ' --exe')
+  run_cmd = ' '.join(['cd', outdir, ';', prerun, python] + argv)
 
   info = {}
   info['run_cmd'] = run_cmd
-  info.update(kwargs)
+  info.update(FLAGS.__dict__)
 
-  if job:
-    # create slurm script
-    nvd = kwargs.get('nvd',False)
-    jscr = ("#!/bin/bash" + '\n' +
-            "#SBATCH -o " + path + '/out' + '\n' +
-            "#SBATCH --mem-per-cpu=" + "5000" + '\n' +
-            "#SBATCH -n 4" + '\n' +
-            "#SBATCH -t 24:00:00" + "\n" +
-            ('#SBATCH -C nvd \n' if nvd else '') +
-            run_cmd)
+  # create slurm script
+  jscr = ("#!/bin/bash" + '\n' +
+          "#SBATCH -o " + outdir + '/out' + '\n' +
+          "#SBATCH --mem-per-cpu=" + "5000" + '\n' +
+          "#SBATCH -n 4" + '\n' +
+          "#SBATCH -t 24:00:00" + "\n" +
+          ('#SBATCH -C nvd \n' if FLAGS.nvd else '') + "\n" +
+          "source ~/.bashrc" + "\n" +
+          run_cmd)
 
-    with open(path+"/slurmjob","w") as f:
-      f.write(jscr)
+  with open(outdir+"/slurmjob","w") as f:
+    f.write(jscr)
 
-    cmd = "sbatch " + path + "/slurmjob"
+  cmd = "sbatch " + outdir + "/slurmjob"
 
-    # submit slurm job
-    out = subprocess.check_output(cmd,shell=True)
-    print("SUBMIT: \n" + out)
+  # submit slurm job
+  out = subprocess.check_output(cmd,shell=True)
+  print("SUBMIT: \n" + out)
 
-    # match job id
-    import re
-    match = re.search('Submitted batch job (\d*)',out)
-    if not match:
-      raise RuntimeError('SLURM submit problem')
-    jid = match.group(1)
+  # match job id
+  import re
+  match = re.search('Submitted batch job (\d*)',out)
+  if not match:
+    raise RuntimeError('SLURM submit problem')
+  jid = match.group(1)
 
-    # write experiment info file
-    info['job_id'] = jid
-    info['run_type'] = 'job'
-    info['run_status'] = 'pending'
-    xwrite(path,info)
-
-  else:
-    info['job_id'] = -1
-    info['run_type'] = 'local'
-    xwrite(path,info)
-
-    execute(path,**kwargs)
+  # write experiment info file
+  info['job_id'] = jid
+  info['job'] = True
+  info['run_status'] = 'pending'
+  xwrite(outdir,info)
 
 
-def execute(path,**kwargs):
+def execute(fun, outdir):
   # execute locally
-  info = xread(path)
+  try:
+    info = xread(outdir)
+  except:
+    info = {}
+
   t_start = time.time()
   try:
-    run_cmd = info['run_cmd'] + ' --exe'
-    info['run_cmd'] = run_cmd
     info['start_time'] = t_start
     info['run_status'] = 'running'
-    xwrite(path,info)
+    xwrite(outdir,info)
     
-    print(run_cmd)
-    #os.system(cmd)
-    #subprocess.check_output(run_cmd,shell=True,stderr=subprocess.STDOUT)
-    subprocess.call(run_cmd,shell=True,stdout=sys.stderr)
+    fun()
+
     info['run_status'] = 'finished'
   except Exception as e:
-    print(e)
+    import traceback
+    traceback.print_exc()
     info['run_status'] = 'aborted'
     print("aborted")
   finally:
     elapsed = time.time() - t_start
     info['end_time'] = time.time()
-    xwrite(path,info)
+    xwrite(outdir,info)
     print('elapsed seconds: ' + str(elapsed))
-    if elapsed <= kwargs.get('del',0)*60:
-      print('delete because del ' + str((kwargs.get('del',0))) + " minutes")
-      shutil.rmtree(path,ignore_errors=False)
-
-def kill(path):
-  ''' try to stop experiment slurm job with destination <path> '''
-  try:
-    x = xread(path)
-    jid = x['job_id']
-    cmd = 'scancel '+str(jid)
-    subprocess.check_output(cmd,shell=True)
-  except Exception:
-    return False
+    if elapsed <= FLAGS.autodel*60.:
+      print('delete because del ' + str(FLAGS.autodel) + " minutes")
+      shutil.rmtree(outdir,ignore_errors=False)
 
 
-def delete(path):
-  kill(path)
-  shutil.rmtree(path,ignore_errors=False)
+def xwrite(path,data):
+  with open(path+'/ezex.json','w+') as f:
+    json.dump(data,f)
 
+def xread(path):
+  with open(path+'/ezex.json') as f:
+    return json.load(f)
 
 
 # Util
