@@ -1,90 +1,108 @@
 #!/usr/bin/env python
+import experiment
 import gym
 import numpy as np
 import filter_env
-import experiment
 import ddpg
 import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string('gymkey','','gym key')
 flags.DEFINE_string('env','','gym environment')
-flags.DEFINE_integer('warmup',20000,'time without training but only filling the replay memory')
-flags.DEFINE_integer('test',10000,'time between tests')
+flags.DEFINE_integer('train',10000,'training time between tests. use 0 for test run only')
+flags.DEFINE_integer('test',10000,'testing time between training')
+flags.DEFINE_integer('tmax',10000,'maximum timesteps per episode')
+flags.DEFINE_bool('random',False,'use random agent')
+flags.DEFINE_integer('total',1000000,'total training time')
+flags.DEFINE_float('monitor',.01,'probability of monitoring a test episode')
 # ...
 # TODO: make command line options
-t_train = 1000000
 n_test=20
-render=False
 
+VERSION = 'DDPG-v0'
+
+if FLAGS.random:
+  FLAGS.train = 0
 
 class Experiment:
   def run(self):
-    self.t_log = 103
-    self.t_global = 0
+    self.t_train = 0
+    self.t_test = 0
 
     # create filtered environment
     self.env = filter_env.makeFilteredEnv(gym.make(FLAGS.env))
-
+    # self.env = gym.make(FLAGS.env)
+    
     self.env.monitor.start(FLAGS.outdir+'/monitor/',video_callable=lambda _: False)
     gym.logger.setLevel(gym.logging.WARNING)
 
     dimO = self.env.observation_space.shape
     dimA = self.env.action_space.shape
+    print(dimO,dimA)
 
-    print('dimO: '+str(dimO) +'  dimA: '+str(dimA))
+    import pprint
+    pprint.pprint(self.env.spec.__dict__,width=1)
 
     self.agent = ddpg.Agent(dimO=dimO,dimA=dimA)
 
     returns = []
-    t_last_test = 0
 
     # main loop
-    while self.t_global < t_train:
+    while self.t_train < FLAGS.total:
 
       # test
-      t_last_test = self.t_global
-      R = np.mean([self.run_episode(test=True,render=render) for _ in range(n_test)])
-      returns.append((self.t_global, R))
+      T = self.t_test
+      R = []
+      while self.t_test - T < FLAGS.test:
+        R.append(self.run_episode(test=True,monitor=(np.random.rand() < FLAGS.monitor)))
+      avr = np.mean(R)
+      print('Average test return\t{} after {} timesteps of training'.format(avr,self.t_train))
+      # save return
+      returns.append((self.t_train, avr))
       np.save(FLAGS.outdir+"/returns.npy",returns)
-      print('Average return '+str(R)+ ' after '+str(self.t_global)+' timesteps of training')
+
 
       # train
-      while self.t_global-t_last_test <  FLAGS.test:
-        self.run_episode(test=False)
+      T = self.t_train
+      R = []
+      while self.t_train - T < FLAGS.train:
+        R.append(self.run_episode(test=False))
+      avr = np.mean(R)
+      print('Average training return\t{} after {} timesteps of training'.format(avr,self.t_train))
 
     self.env.monitor.close()
     # upload results
     if FLAGS.gymkey != '':
-      gym.upload(FLAGS.outdir+"/monitor",FLAGS.gymkey)
+      gym.upload(FLAGS.outdir+"/monitor",algorithm_id = None, api_key=FLAGS.gymkey)
 
-  def run_episode(self,test=True,t_max=250,render=False):
-    self.env.monitor.configure(lambda _: test) # TODO: capture video at test time
+  def run_episode(self,test=True,monitor=False):
+    self.env.monitor.configure(lambda _: test and monitor)
     observation = self.env.reset()
     self.agent.reset(observation)
     R = 0 # return
-    t = 0
+    t = 1
     term = False
     while not term:
-      if render: self.env.render(mode='human')
+      # self.env.render(mode='human')
 
-      action = self.agent.act(test=test,logging=self.t_global%self.t_log==0)
-      #action = self.env.action_space.sample()
+      if FLAGS.random:
+        action = self.env.action_space.sample()
+      else:
+        action = self.agent.act(test=test)
 
       observation, reward, term, info = self.env.step(action)
-      term = (t >= t_max) or term
+      term = (t >= FLAGS.tmax) or term
 
-      if not test:
+      self.agent.observe(reward,term,observation,test=test)
 
-        self.agent.observe(reward,term,observation,test=test)
+      if test:
+        self.t_test += 1
+      else:
+        self.t_train += 1
 
-        if self.t_global > FLAGS.warmup:
-          self.agent.train(logging=self.t_global%self.t_log==0)
+      R += reward
+      t += 1
 
-        self.t_global += 1
-
-      R = R + reward
-      t = t + 1
 
     return R
 

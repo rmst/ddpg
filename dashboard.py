@@ -35,7 +35,7 @@ def main():
   free_port(PORT_IP)
   free_port(PORT_TB)
 
-  subprocess.Popen(['jupyter','notebook', '--no-browser', '--port='+PORT_IP, FLAGS.exdir],shell=True)
+  subprocess.Popen(['jupyter','notebook', '--no-browser', '--port='+PORT_IP, FLAGS.exdir])
 
   scriptdir = os.path.dirname(__file__)
   browser = "" if FLAGS.browser else "--no-browser"
@@ -67,6 +67,7 @@ def load(pattern):
   data = [np.load(f) for f in glob.glob(FLAGS.exdir+'/'+pattern)]
   return data
 
+
 def dashboard(max=10):
   main_view = widgets.VBox()
   display(main_view)
@@ -90,7 +91,7 @@ def dashboard(max=10):
 
         main_view.children = todisplay
         views = views2
-        time.sleep(0.1)
+        time.sleep(1.)
       except Exception as ex:
         print(ex)
         pass
@@ -168,8 +169,19 @@ class ExpView:
     try:
       # update labels
       x = xread(self.outdir)
-      rt = 'job' if x.get('job',False) else 'local'
-      rs = x['run_status']
+      job = x.get('job',False)
+      if job:
+        rt = 'job'
+        jid = x['job_id']
+        try:
+          out = subprocess.check_output("squeue --job {} -o %%T".format(jid).split(' '),stderr=subprocess.STDOUT)      
+          rs = out[6:]
+          if rs == "": rs = x['run_status']
+        except:
+          rs = x['run_status']
+      else:
+        rt = 'local'
+        rs = x['run_status']
       self.run_status.description = rt + ": " + rs
     except:
       pass

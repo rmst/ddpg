@@ -16,42 +16,52 @@ def makeFilteredEnv(env):
     def __init__(self):
       self.__dict__.update(env.__dict__) # transfer properties
 
-      a1 = np.ones_like(acsp.high)
-      self.action_space = gym.spaces.Box(-a1,a1)
-
-      self.filter_obs = np.any(obsp.high < 1e10)
-
-      if self.filter_obs:
-        o1 = np.ones_like(obsp.high)
-        self.observation_space = gym.spaces.Box(-o1, o1)
-      
-
-    def step(self,action):
-      
-      h = acsp.high
-      l = acsp.low
-      sc = h-l
-      c = (h+l)/2.
-
-      ac = np.clip(sc*action+c,l,h)
-
-      obs, reward, term, info = env_type.step(self,ac) # super function
-
-      if self.filter_obs:
+      # Observation space
+      if np.any(obsp.high < 1e10):
         h = obsp.high
         l = obsp.low
         sc = h-l
-        c = (h+l)/2.
-        obs = (obs-c) / sc
+        self.o_c = (h+l)/2.
+        self.o_sc = sc / 2.
+      else:
+        self.o_c = np.zeros_like(obsp.high)
+        self.o_sc = np.ones_like(obsp.high)
 
+      if self.spec.id == "Reacher-v1":
+        self.o_sc[6] = 40.
+        self.o_sc[7] = 20.
+
+      self.observation_space = gym.spaces.Box(self.filter_observation(obsp.low),
+                                              self.filter_observation(obsp.high))
+
+      # Action space
+      h = acsp.high
+      l = acsp.low
+      sc = (h-l)
+      self.a_c = (h+l)/2.
+      self.a_sc = sc / 2.
+      self.action_space = gym.spaces.Box(-np.ones_like(acsp.high),np.ones_like(acsp.high))
+      def assertEqual(a,b): assert a == b, "{} != {}".format(a,b)
+      assertEqual(self.filter_action(self.action_space.low), acsp.low)
+      assertEqual(self.filter_action(self.action_space.high), acsp.high)
+
+    def filter_observation(self,obs):
+      return (obs-self.o_c) / self.o_sc
+
+    def filter_action(self,action):
+      return self.a_sc*action+self.a_c
+
+    def step(self,action):
+
+      ac_f = np.clip(self.filter_action(action),self.action_space.low,self.action_space.high)
+
+      obs, reward, term, info = env_type.step(self,ac_f) # super function
+
+      obs_f = self.filter_observation(obs)
 
       # reward -= 1 # exploration in the face of uncertainty
 
-      # TODO: remove
-      # obs[6] = obs[6] / 40.
-      # obs[7] = obs[7] / 40.
-
-      return obs, reward, term, info
+      return obs_f, reward, term, info
 
   fenv = FilteredEnv()
 

@@ -62,8 +62,31 @@ class ReplayMemory:
 
     return o, a, r, o2, t2, info
     
-    
-# test
+  def __repr__(self):
+    indices = range(0,self.n)
+    o = self.observations[indices,...]
+    a = self.actions[indices]
+    r = self.rewards[indices]
+    t = self.terminals[indices]
+    info = self.info[indices,...]
+
+    s = """
+    OBSERVATIONS
+    {}
+
+    ACTIONS
+    {}
+
+    REWARDS
+    {}
+
+    TERMINALS
+    {}
+    """.format(o,a,r,t)
+
+    return s
+
+# TODO: relocate test
 if __name__ == '__main__':
   s = 100
   rm = ReplayMemory(s,1,1)
@@ -76,8 +99,3 @@ if __name__ == '__main__':
     assert all(o == o2-1),"error: o and o2"
     assert all(o != s-1) , "error: o wrap over rm. o = "+str(o) 
     assert all(o2 != 0) , "error: o2 wrap over rm"
-  print o
-  print o2
-  print a
-  print r
-  print t2

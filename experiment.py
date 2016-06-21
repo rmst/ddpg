@@ -15,6 +15,9 @@ flags.DEFINE_string('tag', '', 'name tag for experiment')
 flags.DEFINE_boolean('job',False, 'submit slurm job')
 flags.DEFINE_boolean('nvd',False, 'run on Nvidia-Node')
 flags.DEFINE_float('autodel', 0., 'auto delete experiments terminating before DEL minutes')
+flags.DEFINE_boolean('gdb',False, 'open gdb on error')
+
+
 
 def run(main=None):
   argv = sys.argv
@@ -44,7 +47,7 @@ def run(main=None):
     submit(argv, FLAGS.outdir)
   else:
     main = main or sys.modules['__main__'].main
-    execute(main, FLAGS.outdir)
+    Executor(main, FLAGS.outdir).execute()
 
 def create(run_folder,exfolder):
   ''' create unique experiment folder '''
@@ -119,35 +122,93 @@ def submit(argv, outdir):
   xwrite(outdir,info)
 
 
-def execute(fun, outdir):
-  # execute locally
-  try:
-    info = xread(outdir)
-  except:
-    info = {}
+# register clean up before anybody else does
+import atexit, signal
+on_exit_do = []
+def on_exit():
+  if on_exit_do:
+    on_exit_do[0]()
+atexit.register(on_exit)
 
-  t_start = time.time()
-  try:
-    info['start_time'] = t_start
-    info['run_status'] = 'running'
-    xwrite(outdir,info)
-    
-    fun()
+class Executor:
+  def __init__(self, main, outdir):
+    signal.signal(signal.SIGINT, self.on_kill)
+    signal.signal(signal.SIGTERM, self.on_kill)
+    on_exit_do.append(self.on_exit)
 
-    info['run_status'] = 'finished'
-  except:
-    import traceback
-    traceback.print_exc()
-    info['run_status'] = 'aborted'
-    print("aborted")
-  finally:
-    elapsed = time.time() - t_start
-    info['end_time'] = time.time()
-    xwrite(outdir,info)
-    print('elapsed seconds: ' + str(elapsed))
+    self.main = main
+    self.outdir = outdir
+
+  def on_exit(self):
+    elapsed = time.time() - self.t_start
+    self.info['end_time'] = time.time()
+    xwrite(self.outdir, self.info)
+    print('Elapsed seconds: {}\n'.format(elapsed))
     if elapsed <= FLAGS.autodel*60.:
-      print('delete because runtime < ' + str(FLAGS.autodel) + " minutes")
-      shutil.rmtree(outdir,ignore_errors=False)
+      print('Deleted output folder because runtime < ' + str(FLAGS.autodel) + " minutes")
+      shutil.rmtree(self.outdir,ignore_errors=False)
+
+  def on_kill(self,*args):
+    self.info['run_status'] = 'aborted'
+    print("Experiment aborted")
+    sys.exit()
+
+  def execute(self):
+    """ execute locally """
+    try:
+      self.info = xread(self.outdir)
+    except:
+      self.info = {}
+
+    self.t_start = time.time()
+
+    try:
+      self.info['start_time'] = self.t_start
+      self.info['run_status'] = 'running'
+      xwrite(self.outdir,self.info)
+
+      self.main()
+
+      self.info['run_status'] = 'finished'
+    except Exception as e:
+      self.on_error(e)
+
+  def on_error(self,e):
+    self.info['run_status'] = 'error'
+
+    # construct meaningful traceback
+    import traceback, sys, code
+    type, value, tb = sys.exc_info()
+    tbs = []
+    tbm = []
+    while tb is not None:
+      stb = traceback.extract_tb(tb)
+      filename = stb[0][0]
+      tdir,fn = os.path.split(filename)
+      maindir = os.path.dirname(sys.modules['__main__'].__file__)
+      if tdir == maindir:
+        tbs.append(tb)
+        tbm.append("{} : {} : {} : {}".format(fn,stb[0][1],stb[0][2],stb[0][3]))
+
+      tb = tb.tb_next
+
+    # print custom traceback
+    print("\n\n- Experiment error traceback (use --gdb to debug) -\n")
+    print("\n".join(tbm)+"\n")
+    print("{}: {}\n".format(type(e),e))
+
+    # enter interactive mode (i.e. post mortem)
+    if FLAGS.gdb:
+      print("\nPost Mortem:")
+      for i in reversed(range(len(tbs))):
+        print("Level {}: {}".format(i,tbm[i]))
+        # pdb.post_mortem(tbs[i])
+        frame = tbs[i].tb_frame
+        ns = dict(frame.f_globals)
+        ns.update(frame.f_locals)
+        code.interact(banner="", local=ns)
+        print("\n")
+
 
 
 def xwrite(path,data):

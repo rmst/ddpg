@@ -6,6 +6,9 @@ import numpy as np
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_float('ou_sigma',0.2,'')
+flags.DEFINE_integer('warmup',20000,'time without training but only filling the replay memory')
+flags.DEFINE_float('log',.01,'probability of writing a tensorflow log at each timestep')
+flags.DEFINE_integer('bsize',32,'minibatch size')
 # ...
 # TODO: make command line options
 tau =.001
@@ -18,20 +21,23 @@ ou_theta = 0.15
 ou_sigma = 0.2
 rm_size = 500000
 rm_dtype = 'float32'
-mb_size = 32
 threads = 4
+
+
+
 
 # DDPG Agent
 # 
 class Agent:
 
-  def __init__(self, dimO, dimA, nets=nets_dm,**kwargs):
+  def __init__(self, dimO, dimA):
     dimA = list(dimA)
     dimO = list(dimO)
 
+    nets=nets_dm
+
     # init replay memory
     self.rm = ReplayMemory(rm_size, dimO, dimA, dtype=np.__dict__[rm_dtype])
-    self.mb_size = mb_size
     # start tf session
     self.sess = tf.Session(config=tf.ConfigProto(
       inter_op_parallelism_threads=threads,
@@ -42,10 +48,8 @@ class Agent:
     #
     self.theta_p = nets.theta_p(dimO, dimA)
     self.theta_q = nets.theta_q(dimO, dimA)
-    self.theta_pt, update_pt = exponential_moving_averages(
-      self.theta_p, tau)
-    self.theta_qt, update_qt = exponential_moving_averages(
-      self.theta_q, tau)
+    self.theta_pt, update_pt = exponential_moving_averages(self.theta_p, tau)
+    self.theta_qt, update_qt = exponential_moving_averages(self.theta_q, tau)
 
     obs = tf.placeholder(tf.float32, [None] + dimO, "obs")
     act_test, sum_p = nets.policy(obs, self.theta_p)
@@ -54,8 +58,7 @@ class Agent:
     noise_init = tf.zeros([1]+dimA)
     noise_var = tf.Variable(noise_init)
     self.ou_reset = noise_var.assign(noise_init)
-    noise = noise_var.assign_sub(
-      (ou_theta) * noise_var - tf.random_normal(dimA, stddev=ou_sigma))
+    noise = noise_var.assign_sub((ou_theta) * noise_var - tf.random_normal(dimA, stddev=ou_sigma))
     act_expl = act_test + noise
 
     # test
@@ -64,38 +67,35 @@ class Agent:
     # training
     # policy loss
     meanq = tf.reduce_mean(q, 0)
-    wd_p = tf.add_n([pl2 * tf.nn.l2_loss(var)
-             for var in self.theta_p])  # weight decay
+    wd_p = tf.add_n([pl2 * tf.nn.l2_loss(var) for var in self.theta_p])  # weight decay
     loss_p = -meanq + wd_p
     # policy optimization
     optim_p = tf.train.AdamOptimizer(learning_rate=lrp)
-    grads_and_vars_p = optim_p.compute_gradients(
-      loss_p, var_list=self.theta_p)
+    grads_and_vars_p = optim_p.compute_gradients(loss_p, var_list=self.theta_p)
     optimize_p = optim_p.apply_gradients(grads_and_vars_p)
     with tf.control_dependencies([optimize_p]):
       train_p = tf.group(update_pt)
 
     # q optimization
-    act_train = tf.placeholder(tf.float32, [None] + dimA, "act_train")
-    rew = tf.placeholder(tf.float32, [None], "rew")
-    obs2 = tf.placeholder(tf.float32, [None] + dimO, "obs2")
-    term2 = tf.placeholder(tf.bool, [None], "term2")
+    act_train = tf.placeholder(tf.float32, [FLAGS.bsize] + dimA, "act_train")
+    rew = tf.placeholder(tf.float32, [FLAGS.bsize], "rew")
+    obs2 = tf.placeholder(tf.float32, [FLAGS.bsize] + dimO, "obs2")
+    term2 = tf.placeholder(tf.bool, [FLAGS.bsize], "term2")
     # q
-    q, sum_qq = nets.qfunction(obs, act_train, self.theta_q)
+    q_train, sum_qq = nets.qfunction(obs, act_train, self.theta_q)
     # q targets
     act2, sum_p2 = nets.policy(obs2, theta=self.theta_pt)
     q2, sum_q2 = nets.qfunction(obs2, act2, theta=self.theta_qt)
     q_target = tf.stop_gradient(tf.select(term2,rew,rew + discount*q2))
     # q_target = tf.stop_gradient(rew + discount * q2)
     # q loss
-    mb_td_error = tf.square(q - q_target)
-    mean_td_error = tf.reduce_mean(mb_td_error, 0)
+    td_error = q_train - q_target
+    ms_td_error = tf.reduce_mean(tf.square(td_error), 0)
     wd_q = tf.add_n([ql2 * tf.nn.l2_loss(var) for var in self.theta_q])  # weight decay
-    loss_q = mean_td_error + wd_q
+    loss_q = ms_td_error + wd_q
     # q optimization
     optim_q = tf.train.AdamOptimizer(learning_rate=lrq)
-    grads_and_vars_q = optim_q.compute_gradients(
-      loss_q, var_list=self.theta_q)
+    grads_and_vars_q = optim_q.compute_gradients(loss_q, var_list=self.theta_q)
     optimize_q = optim_q.apply_gradients(grads_and_vars_q)
     with tf.control_dependencies([optimize_q]):
       train_q = tf.group(update_qt)
@@ -104,7 +104,7 @@ class Agent:
     log_obs = [] if dimO[0]>20 else [tf.histogram_summary("obs/"+str(i),obs[:,i]) for i in range(dimO[0])]
     log_act = [] if dimA[0]>20 else [tf.histogram_summary("act/inf"+str(i),act_test[:,i]) for i in range(dimA[0])]
     log_act2 = [] if dimA[0]>20 else [tf.histogram_summary("act/train"+str(i),act_train[:,i]) for i in range(dimA[0])]
-    log_misc = [sum_p, sum_qq, tf.histogram_summary("td_error", mb_td_error)]
+    log_misc = [sum_p, sum_qq, tf.histogram_summary("td_error", td_error)]
     log_grad = [grad_histograms(grads_and_vars_p), grad_histograms(grads_and_vars_q)]
     log_train = log_obs + log_act + log_act2 + log_misc + log_grad
 
@@ -138,7 +138,7 @@ class Agent:
     self._reset()
     self.observation = obs  # initial observation
 
-  def act(self, test=False, logging=False):
+  def act(self, test=False):
     obs = np.expand_dims(self.observation, axis=0)
     action = self._act_test(obs) if test else self._act_expl(obs)
     self.action = np.atleast_1d(np.squeeze(action, axis=0)) # TODO: remove this hack
@@ -150,26 +150,26 @@ class Agent:
       self.t = self.t + 1
       self.rm.enqueue(self.observation, term, self.action, rew)
 
+    self.observation = obs2  # current observation <- obs2
+
+    # train
+    if not test and self.t > FLAGS.warmup:
+      obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)
+      self._train(obs,act,rew,ob2,term2, log = (np.random.rand() < FLAGS.log), global_step=self.t)
+
       # save parameters etc.
       # if (self.t+45000) % 50000 == 0: # TODO: correct
       #   s = self.saver.save(self.sess,FLAGS.outdir+"f/tf/c",self.t)
       #   print("DDPG Checkpoint: " + s)
 
-
-    self.observation = obs2  # current observation <- obs2
-    return rew
-
-  def train(self, logging=False):
-    obs, act, rew, obs2, term2, info = self.rm.minibatch(size=self.mb_size)
-    self._train(obs,act,rew,obs2,term2,log=logging,global_step=self.t)
-
-
   def write_scalar(self,tag,val):
     s = tf.Summary(value=[tf.Summary.Value(tag=tag,simple_value=val)])
     self.writer.add_summary(s,self.t)
 
+
   def __del__(self):
     self.sess.close()
+
 
 
 # Tensorflow utils
@@ -190,7 +190,7 @@ class Fun:
       global_step: global_step for summary_writer
     """
     log = kwargs.get('log',False)
-    i = kwargs.get('global_step',None)
+
     feeds = {}
     for (argpos, arg) in enumerate(args):
       feeds[self._inputs[argpos]] = arg
@@ -199,6 +199,7 @@ class Fun:
     res = self._session.run(out, feeds)
     
     if log:
+      i = kwargs['global_step']
       self._writer.add_summary(res[-1],global_step=i)
       res = res[:-1]
 
