@@ -7,7 +7,7 @@ import ddpg
 import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
-flags.DEFINE_string('gymkey','','gym key')
+flags.DEFINE_boolean('upload',False,'upload to gym (requires evironment variable OPENAI_GYM_API_KEY)')
 flags.DEFINE_string('env','','gym environment')
 flags.DEFINE_integer('train',10000,'training time between tests. use 0 for test run only')
 flags.DEFINE_integer('test',10000,'testing time between training')
@@ -17,9 +17,9 @@ flags.DEFINE_integer('total',1000000,'total training time')
 # flags.DEFINE_float('monitor',.01,'probability of monitoring a test episode')
 # ...
 # TODO: make command line options
-n_test=20
 
 VERSION = 'DDPG-v0'
+GYM_ALGO_ID = 'alg_TmtzkcfSauZoBF97o9aQ'
 
 if FLAGS.random:
   FLAGS.train = 0
@@ -53,6 +53,7 @@ class Experiment:
       # test
       T = self.t_test
       R = []
+      self.env.monitor.start(FLAGS.outdir+'/monitor/',video_callable=lambda _: False,resume=True)
       while self.t_test - T < FLAGS.test:
         R.append(self.run_episode(test=True,monitor=(len(R)==0)))
       avr = np.mean(R)
@@ -60,6 +61,13 @@ class Experiment:
       # save return
       returns.append((self.t_train, avr))
       np.save(FLAGS.outdir+"/returns.npy",returns)
+
+      # evaluate required number of episodes for gym
+      if self.env.spec.reward_threshold is not None and avr > self.env.spec.reward_threshold:
+        for i in range(self.env.spec.trials):
+          self.run_episode(test=True)
+
+      self.env.monitor.close()
 
 
       # train
@@ -72,8 +80,8 @@ class Experiment:
 
     self.env.monitor.close()
     # upload results
-    if FLAGS.gymkey != '':
-      gym.upload(FLAGS.outdir+"/monitor",algorithm_id = None, api_key=FLAGS.gymkey)
+    if FLAGS.upload:
+      gym.upload(FLAGS.outdir+"/monitor",algorithm_id = GYM_ALGO_ID)
 
   def run_episode(self,test=True,monitor=False):
     self.env.monitor.configure(lambda _: test and monitor)
