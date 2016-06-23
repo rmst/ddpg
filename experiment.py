@@ -11,7 +11,7 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string('outdir', '', 'destination folder for results')
 flags.DEFINE_boolean('copy',False, 'copy code folder to outdir')
-flags.DEFINE_string('tag', '', 'name tag for experiment')
+# flags.DEFINE_string('tag', '', 'name tag for experiment')
 flags.DEFINE_boolean('job',False, 'submit slurm job')
 flags.DEFINE_boolean('nvd',False, 'run on Nvidia-Node')
 flags.DEFINE_float('autodel', 0., 'auto delete experiments terminating before DEL minutes')
@@ -55,9 +55,12 @@ def create(run_folder,exfolder):
   # generate unique name and create folder
   if not os.path.exists(exfolder): os.mkdir(exfolder)
 
-  rf = os.path.basename(run_folder)
   dstr = datetime.now().strftime('%Y%m%d_%H%M_%S')
-  basename =  dstr+'_'+rf+'_'+ FLAGS.tag
+
+  # rf = os.path.basename(run_folder)
+  #basename =  dstr+'_'+rf+'_'+ FLAGS.tag
+  basename =  dstr+'_'+ FLAGS.env
+  
   name = basename
   i = 1
   while name in os.listdir(exfolder):
@@ -87,7 +90,7 @@ def submit(argv, outdir):
 
   info = {}
   info['run_cmd'] = run_cmd
-  info.update(FLAGS.__dict__)
+  info['flags'] = FLAGS.__flags
 
   # create slurm script
   jscr = ("#!/bin/bash" + '\n' +
@@ -95,6 +98,7 @@ def submit(argv, outdir):
           "#SBATCH --mem-per-cpu=" + "5000" + '\n' +
           "#SBATCH -n 4" + '\n' +
           "#SBATCH -t 24:00:00" + "\n" +
+          "#SBATCH --exclusive" + "\n" + 
           ('#SBATCH -C nvd \n' if FLAGS.nvd else '') + "\n" +
           "source ~/.bashrc" + "\n" +
           run_cmd)
@@ -129,6 +133,7 @@ def on_exit():
   if on_exit_do:
     on_exit_do[0]()
 atexit.register(on_exit)
+
 
 class Executor:
   def __init__(self, main, outdir):

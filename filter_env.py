@@ -27,21 +27,28 @@ def makeFilteredEnv(env):
         self.o_c = np.zeros_like(obsp.high)
         self.o_sc = np.ones_like(obsp.high)
 
-      if self.spec.id == "Reacher-v1":
-        self.o_sc[6] = 40.
-        self.o_sc[7] = 20.
-
-      self.observation_space = gym.spaces.Box(self.filter_observation(obsp.low),
-                                              self.filter_observation(obsp.high))
-
       # Action space
       h = acsp.high
       l = acsp.low
       sc = (h-l)
       self.a_c = (h+l)/2.
       self.a_sc = sc / 2.
+
+      # Rewards
+      self.r_sc = 1.
+      self.r_c = 0.
+
+      # Special cases
+      if self.spec.id == "Reacher-v1":
+        self.o_sc[6] = 40.
+        self.o_sc[7] = 20.
+        self.r_sc = 100.
+
+      # Check and assign transformed spaces
+      self.observation_space = gym.spaces.Box(self.filter_observation(obsp.low),
+                                              self.filter_observation(obsp.high))
       self.action_space = gym.spaces.Box(-np.ones_like(acsp.high),np.ones_like(acsp.high))
-      def assertEqual(a,b): assert a == b, "{} != {}".format(a,b)
+      def assertEqual(a,b): assert np.all(a == b), "{} != {}".format(a,b)
       assertEqual(self.filter_action(self.action_space.low), acsp.low)
       assertEqual(self.filter_action(self.action_space.high), acsp.high)
 
@@ -50,6 +57,9 @@ def makeFilteredEnv(env):
 
     def filter_action(self,action):
       return self.a_sc*action+self.a_c
+
+    def filter_reward(self,reward):
+      return self.r_sc*reward+self.r_c
 
     def step(self,action):
 

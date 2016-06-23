@@ -110,6 +110,7 @@ class ExpView:
       'href="http://localhost:'+ PORT_IP +'/tree/'+ name +'"> '+
       name + ' </a> ')
 
+    # self.env = widgets.Button()
     self.run_status = widgets.Button()
 
     killb = widgets.Button(description='kill')
@@ -133,7 +134,7 @@ class ExpView:
 
     tbb.on_click(ontb)
 
-    self.bar = widgets.HBox((bname,self.run_status,tbb,tbbb,killb,delb))
+    self.bar = widgets.HBox((bname, self.run_status,tbb,tbbb,killb,delb))
 
     self.view = widgets.VBox((self.bar,self.plot,widgets.HTML('<br><br>')))
     self.th_stop = False
@@ -176,12 +177,15 @@ class ExpView:
         try:
           out = subprocess.check_output("squeue --job {} -o %%T".format(jid).split(' '),stderr=subprocess.STDOUT)      
           rs = out[6:]
-          if rs == "": rs = x['run_status']
+          if rs == "": rs = "dead"
         except:
-          rs = x['run_status']
+          rs = "dead"
       else:
         rt = 'local'
         rs = x['run_status']
+
+      # flags = x.get('__flags') or x.get('flags')
+      # self.env.description = flags.get('env','')
       self.run_status.description = rt + ": " + rs
     except:
       pass

@@ -14,7 +14,7 @@ flags.DEFINE_integer('test',10000,'testing time between training')
 flags.DEFINE_integer('tmax',10000,'maximum timesteps per episode')
 flags.DEFINE_bool('random',False,'use random agent')
 flags.DEFINE_integer('total',1000000,'total training time')
-flags.DEFINE_float('monitor',.01,'probability of monitoring a test episode')
+# flags.DEFINE_float('monitor',.01,'probability of monitoring a test episode')
 # ...
 # TODO: make command line options
 n_test=20
@@ -54,7 +54,7 @@ class Experiment:
       T = self.t_test
       R = []
       while self.t_test - T < FLAGS.test:
-        R.append(self.run_episode(test=True,monitor=(np.random.rand() < FLAGS.monitor)))
+        R.append(self.run_episode(test=True,monitor=(len(R)==0)))
       avr = np.mean(R)
       print('Average test return\t{} after {} timesteps of training'.format(avr,self.t_train))
       # save return
