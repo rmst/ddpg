@@ -32,6 +32,7 @@ def policy(obs,theta,name='policy'):
     h2 = tf.nn.relu( tf.matmul(h1,theta[2]) + theta[3],name='h2')
     h3 = tf.identity(tf.matmul(h2,theta[4]) + theta[5],name='h3')
     action = tf.nn.tanh(h3,name='h4-action')
+    # print(action.get_shape())
     summary = hist_summaries(h0,h1,h2,h3,action)
     return action,summary
 

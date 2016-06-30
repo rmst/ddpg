@@ -11,7 +11,7 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string('outdir', '', 'destination folder for results')
 flags.DEFINE_boolean('copy',False, 'copy code folder to outdir')
-# flags.DEFINE_string('tag', '', 'name tag for experiment')
+flags.DEFINE_string('tag', '', 'name tag for experiment')
 flags.DEFINE_boolean('job',False, 'submit slurm job')
 flags.DEFINE_boolean('nvd',False, 'run on Nvidia-Node')
 flags.DEFINE_float('autodel', 0., 'auto delete experiments terminating before DEL minutes')
@@ -59,8 +59,8 @@ def create(run_folder,exfolder):
 
   # rf = os.path.basename(run_folder)
   #basename =  dstr+'_'+rf+'_'+ FLAGS.tag
-  basename =  dstr+'_'+ FLAGS.env
-  
+  basename =  '_'.join([dstr,FLAGS.env,FLAGS.tag])
+
   name = basename
   i = 1
   while name in os.listdir(exfolder):
@@ -149,7 +149,7 @@ class Executor:
     self.info['end_time'] = time.time()
     xwrite(self.outdir, self.info)
     print('Elapsed seconds: {}\n'.format(elapsed))
-    if elapsed <= FLAGS.autodel*60.:
+    if not self.info.get('job',False) and elapsed <= FLAGS.autodel*60.:
       print('Deleted output folder because runtime < ' + str(FLAGS.autodel) + " minutes")
       shutil.rmtree(self.outdir,ignore_errors=False)
 
@@ -200,7 +200,7 @@ class Executor:
     # print custom traceback
     print("\n\n- Experiment error traceback (use --gdb to debug) -\n")
     print("\n".join(tbm)+"\n")
-    print("{}: {}\n".format(type(e),e))
+    print("{}: {}\n".format(e.__class__.__name__,e))
 
     # enter interactive mode (i.e. post mortem)
     if FLAGS.gdb:

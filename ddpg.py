@@ -6,9 +6,12 @@ import numpy as np
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_float('ou_sigma',0.2,'')
-flags.DEFINE_integer('warmup',20000,'time without training but only filling the replay memory')
+flags.DEFINE_integer('warmup',50000,'time without training but only filling the replay memory')
+flags.DEFINE_bool('warmq',True,'train Q during warmup time')
 flags.DEFINE_float('log',.01,'probability of writing a tensorflow log at each timestep')
 flags.DEFINE_integer('bsize',32,'minibatch size')
+flags.DEFINE_bool('async',True,'update policy and q function concurrently')
+
 # ...
 # TODO: make command line options
 tau =.001
@@ -63,7 +66,6 @@ class Agent:
 
     # test
     q, sum_q = nets.qfunction(obs, act_test, self.theta_q)
-
     # training
     # policy loss
     meanq = tf.reduce_mean(q, 0)
@@ -120,6 +122,8 @@ class Agent:
       self._act_test = Fun(obs,act_test)
       self._act_expl = Fun(obs,act_expl)
       self._reset = Fun([],self.ou_reset)
+      self._train_q = Fun([obs,act_train,rew,obs2,term2],[train_q],log_train,self.writer)
+      self._train_p = Fun([obs],[train_p],log_train,self.writer)
       self._train = Fun([obs,act_train,rew,obs2,term2],[train_p,train_q],log_train,self.writer)
 
     # initialize tf variables
@@ -146,21 +150,36 @@ class Agent:
 
   def observe(self, rew, term, obs2, test=False):
 
-    if not test:
-      self.t = self.t + 1
-      self.rm.enqueue(self.observation, term, self.action, rew)
-
-    self.observation = obs2  # current observation <- obs2
+    obs1 = self.observation
+    self.observation = obs2
 
     # train
-    if not test and self.t > FLAGS.warmup:
-      obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)
-      self._train(obs,act,rew,ob2,term2, log = (np.random.rand() < FLAGS.log), global_step=self.t)
+    if not test:
+      self.t = self.t + 1
+      self.rm.enqueue(obs1, term, self.action, rew)
+
+      if self.t > FLAGS.warmup:
+        self.train()
+
+      elif FLAGS.warmq and self.rm.n > 1000:
+        # Train Q on warmup
+        obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)
+        self._train_q(obs,act,rew,ob2,term2, log = (np.random.rand() < FLAGS.log), global_step=self.t)
 
       # save parameters etc.
       # if (self.t+45000) % 50000 == 0: # TODO: correct
       #   s = self.saver.save(self.sess,FLAGS.outdir+"f/tf/c",self.t)
       #   print("DDPG Checkpoint: " + s)
+
+  def train(self):
+    obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)
+    log = (np.random.rand() < FLAGS.log)
+
+    if FLAGS.async:
+      self._train(obs,act,rew,ob2,term2, log = log, global_step=self.t)
+    else:
+      self._train_q(obs,act,rew,ob2,term2, log = log, global_step=self.t)
+      self._train_p(obs, log = log, global_step=self.t)
 
   def write_scalar(self,tag,val):
     s = tf.Summary(value=[tf.Summary.Value(tag=tag,simple_value=val)])

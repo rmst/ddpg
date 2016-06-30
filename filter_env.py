@@ -42,7 +42,8 @@ def makeFilteredEnv(env):
       if self.spec.id == "Reacher-v1":
         self.o_sc[6] = 40.
         self.o_sc[7] = 20.
-        self.r_sc = 100.
+        self.r_sc = 200.
+        self.r_c = 0.
 
       # Check and assign transformed spaces
       self.observation_space = gym.spaces.Box(self.filter_observation(obsp.low),
@@ -59,6 +60,7 @@ def makeFilteredEnv(env):
       return self.a_sc*action+self.a_c
 
     def filter_reward(self,reward):
+      ''' has to be applied manually otherwise it makes the reward_threshold invalid '''
       return self.r_sc*reward+self.r_c
 
     def step(self,action):
@@ -68,8 +70,6 @@ def makeFilteredEnv(env):
       obs, reward, term, info = env_type.step(self,ac_f) # super function
 
       obs_f = self.filter_observation(obs)
-
-      # reward -= 1 # exploration in the face of uncertainty
 
       return obs_f, reward, term, info
 

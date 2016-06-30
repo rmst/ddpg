@@ -13,8 +13,9 @@ flags.DEFINE_integer('train',10000,'training time between tests. use 0 for test 
 flags.DEFINE_integer('test',10000,'testing time between training')
 flags.DEFINE_integer('tmax',10000,'maximum timesteps per episode')
 flags.DEFINE_bool('random',False,'use random agent')
+flags.DEFINE_bool('tot',False,'train on test data')
 flags.DEFINE_integer('total',1000000,'total training time')
-# flags.DEFINE_float('monitor',.01,'probability of monitoring a test episode')
+flags.DEFINE_float('monitor',.05,'probability of monitoring a test episode')
 # ...
 # TODO: make command line options
 
@@ -53,22 +54,19 @@ class Experiment:
       # test
       T = self.t_test
       R = []
-      self.env.monitor.start(FLAGS.outdir+'/monitor/',video_callable=lambda _: False,resume=True)
       while self.t_test - T < FLAGS.test:
-        R.append(self.run_episode(test=True,monitor=(len(R)==0)))
+        R.append(self.run_episode(test=True,monitor=(self.t_test - T < FLAGS.monitor * FLAGS.test)))
       avr = np.mean(R)
       print('Average test return\t{} after {} timesteps of training'.format(avr,self.t_train))
       # save return
       returns.append((self.t_train, avr))
       np.save(FLAGS.outdir+"/returns.npy",returns)
 
-      # evaluate required number of episodes for gym
+      # evaluate required number of episodes for gym and end training when above threshold
       if self.env.spec.reward_threshold is not None and avr > self.env.spec.reward_threshold:
-        for i in range(self.env.spec.trials):
-          self.run_episode(test=True)
-
-      self.env.monitor.close()
-
+        avr = np.mean([self.run_episode(test=True) for _ in range(self.env.spec.trials)])
+        if avr > self.env.spec.reward_threshold:
+          break
 
       # train
       T = self.t_train
@@ -101,7 +99,8 @@ class Experiment:
       observation, reward, term, info = self.env.step(action)
       term = (t >= FLAGS.tmax) or term
 
-      self.agent.observe(reward,term,observation,test=test)
+      r_f = self.env.filter_reward(reward)
+      self.agent.observe(r_f,term,observation,test = test and not FLAGS.tot)
 
       if test:
         self.t_test += 1
