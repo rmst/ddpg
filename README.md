@@ -1,6 +1,14 @@
 # Deep Deterministic Policy Gradient
 Paper: ["Continuous control with deep reinforcement learning" - TP Lillicrap, JJ Hunt et al., 2015](http://arxiv.org/abs/1509.02971)
 
+<table>
+  <tr>
+    <td><img src="./readme/ipend.gif?raw=true" width="200"></td>
+    <td><img src="./readme/reacher.gif?raw=true" width="200"></td>
+    <td><img src="./readme/pend.gif?raw=true" width="200"></td>
+  </tr>
+</table>
+
 ### Installation
 Install [Gym](https://github.com/openai/gym#installation) and [TensorFlow](https://www.tensorflow.org/versions/r0.9/get_started/os_setup.html). Then:
 
@@ -21,6 +29,9 @@ Enter `python run.py -h` to get a complete overview.
 If you want to run in the cloud or a university cluster [this](https://github.com/SimonRamstedt/ddpg-darmstadt) might contain additional information.
 
 ### Visualization
+
+<img src="./readme/db.png" width="800">
+
 Example:
 ```bash
 python dashboard.py --exdir ../ddpg-results

@@ -38,10 +38,11 @@ def main():
   subprocess.Popen(['jupyter','notebook', '--no-browser', '--port='+PORT_IP, FLAGS.exdir])
 
   scriptdir = os.path.dirname(__file__)
-  browser = "" if FLAGS.browser else "--no-browser"
   os.environ["DB_EXDIR"] = FLAGS.exdir
   os.environ["DB_BROWSER"] = 'True' if FLAGS.browser else 'False'
-  os.system('jupyter notebook --port='+ PORT_DB + ' ' + scriptdir + ' ' + browser)
+  os.system('jupyter notebook --port='+ PORT_DB + ' ' + scriptdir + ' --no-browser')
+  if FLAGS.browser:
+    webbrowser.open_new_tab('http://localhost:'+ PORT_DB+'/notebooks/dashboard.ipynb')
 
 def free_port(port):
   import signal
