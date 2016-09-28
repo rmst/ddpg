@@ -20,11 +20,12 @@ class PuddleworldEnv(core.Env):
 
   radius = .1
 
-  stateLB = -np.array([0, 0])
-  stateUB = np.array([1, 1])
+  stateLB = np.array([0., 0])
+  stateUB = np.array([1., 1])
 
   actionLB = -np.array([.05,.05])
   actionUB =  np.array([.05,.05])
+
   rewardLB = -41
   rewardUB = -1
 
@@ -37,8 +38,8 @@ class PuddleworldEnv(core.Env):
     self.viewer = None
 
     # rbfs
-    n_centers = 10
-    self.rbf_centers = np.linspace(0, 1, n_centers)
+    self.n_centers = 10.
+    self.rbf_centers = np.transpose(np.repeat(np.atleast_2d(np.linspace(0, 1, self.n_centers)),2,axis=0))
 
 
   def _reset(self):
@@ -61,8 +62,9 @@ class PuddleworldEnv(core.Env):
 
 
   def getFilteredState(self):
-    rbfs = np.exp( -(self.state - self.rbf_centers)**2 )
-    return rbfs
+    phi = np.exp( - ( (self.stateUB - self.stateLB) / self.n_centers * (self.state - self.rbf_centers))**2)
+    phi2 = np.reshape(phi, -1)
+    return phi2
 
 
   def puddlepenalty(self):
@@ -104,4 +106,8 @@ class PuddleworldEnv(core.Env):
       reward = 0
 
     return reward
-    
+
+
+if __name__ == '__main__':
+	p = PuddleworldEnv()
+	print(p._reset())
