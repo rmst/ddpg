@@ -6,6 +6,7 @@ import numpy as np
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_float('ou_sigma',0.2,'')
+flags.DEFINE_float('ou_theta',0.15,'')
 flags.DEFINE_integer('warmup',50000,'time without training but only filling the replay memory')
 flags.DEFINE_bool('warmq',True,'train Q during warmup time')
 flags.DEFINE_float('log',.01,'probability of writing a tensorflow log at each timestep')
@@ -20,13 +21,9 @@ pl2 =.0
 ql2 =.01
 lrp =.0001
 lrq =.001
-ou_theta = 0.15
-ou_sigma = 0.2
-rm_size = 500000
+rm_size = 1000000
 rm_dtype = 'float32'
 threads = 4
-
-
 
 
 # DDPG Agent
@@ -61,7 +58,7 @@ class Agent:
     noise_init = tf.zeros([1]+dimA)
     noise_var = tf.Variable(noise_init)
     self.ou_reset = noise_var.assign(noise_init)
-    noise = noise_var.assign_sub((ou_theta) * noise_var - tf.random_normal(dimA, stddev=ou_sigma))
+    noise = noise_var.assign_sub((FLAGS.ou_theta) * noise_var - tf.random_normal(dimA, stddev=FLAGS.ou_sigma))
     act_expl = act_test + noise
 
     # test
@@ -81,14 +78,14 @@ class Agent:
     # q optimization
     act_train = tf.placeholder(tf.float32, [FLAGS.bsize] + dimA, "act_train")
     rew = tf.placeholder(tf.float32, [FLAGS.bsize], "rew")
+    term = tf.placeholder(tf.bool, [FLAGS.bsize], "term")
     obs2 = tf.placeholder(tf.float32, [FLAGS.bsize] + dimO, "obs2")
-    term2 = tf.placeholder(tf.bool, [FLAGS.bsize], "term2")
     # q
     q_train, sum_qq = nets.qfunction(obs, act_train, self.theta_q)
     # q targets
     act2, sum_p2 = nets.policy(obs2, theta=self.theta_pt)
     q2, sum_q2 = nets.qfunction(obs2, act2, theta=self.theta_qt)
-    q_target = tf.stop_gradient(tf.select(term2,rew,rew + discount*q2))
+    q_target = tf.stop_gradient(tf.select(term,rew,rew + discount*q2))
     # q_target = tf.stop_gradient(rew + discount * q2)
     # q loss
     td_error = q_train - q_target
@@ -122,9 +119,9 @@ class Agent:
       self._act_test = Fun(obs,act_test)
       self._act_expl = Fun(obs,act_expl)
       self._reset = Fun([],self.ou_reset)
-      self._train_q = Fun([obs,act_train,rew,obs2,term2],[train_q],log_train,self.writer)
+      self._train_q = Fun([obs,act_train,rew,term, obs2],[train_q],log_train,self.writer)
       self._train_p = Fun([obs],[train_p],log_train,self.writer)
-      self._train = Fun([obs,act_train,rew,obs2,term2],[train_p,train_q],log_train,self.writer)
+      self._train = Fun([obs,act_train,rew,term, obs2],[train_p,train_q],log_train,self.writer)
 
     # initialize tf variables
     self.saver = tf.train.Saver(max_to_keep=1)
@@ -163,8 +160,8 @@ class Agent:
 
       elif FLAGS.warmq and self.rm.n > 1000:
         # Train Q on warmup
-        obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)
-        self._train_q(obs,act,rew,ob2,term2, log = (np.random.rand() < FLAGS.log), global_step=self.t)
+        obs, act, rew, term, ob2, info = self.rm.minibatch(size=FLAGS.bsize)
+        self._train_q(obs,act,rew,term, ob2, log = (np.random.rand() < FLAGS.log), global_step=self.t)
 
       # save parameters etc.
       # if (self.t+45000) % 50000 == 0: # TODO: correct

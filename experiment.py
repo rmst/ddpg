@@ -16,6 +16,7 @@ flags.DEFINE_boolean('job',False, 'submit slurm job')
 flags.DEFINE_boolean('nvd',False, 'run on Nvidia-Node')
 flags.DEFINE_float('autodel', 0., 'auto delete experiments terminating before DEL minutes')
 flags.DEFINE_boolean('gdb',False, 'open gdb on error')
+flags.DEFINE_boolean('fulltrace',False, 'display full traceback on error')
 
 
 
@@ -191,7 +192,7 @@ class Executor:
       filename = stb[0][0]
       tdir,fn = os.path.split(filename)
       maindir = os.path.dirname(sys.modules['__main__'].__file__)
-      if tdir == maindir:
+      if tdir == maindir or FLAGS.fulltrace:
         tbs.append(tb)
         tbm.append("{} : {} : {} : {}".format(fn,stb[0][1],stb[0][2],stb[0][3]))
 

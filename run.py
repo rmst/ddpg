@@ -16,8 +16,7 @@ flags.DEFINE_bool('random',False,'use random agent')
 flags.DEFINE_bool('tot',False,'train on test data')
 flags.DEFINE_integer('total',1000000,'total training time')
 flags.DEFINE_float('monitor',.05,'probability of monitoring a test episode')
-# ...
-# TODO: make command line options
+flags.DEFINE_bool('autonorm',False,'automatically normalize observations and actions of the environemnt')
 
 VERSION = 'DDPG-v0'
 GYM_ALGO_ID = 'alg_TmtzkcfSauZoBF97o9aQ'
@@ -31,7 +30,7 @@ class Experiment:
     self.t_test = 0
 
     # create filtered environment
-    self.env = filter_env.makeFilteredEnv(gym.make(FLAGS.env))
+    self.env = filter_env.makeFilteredEnv(gym.make(FLAGS.env)) if FLAGS.autonorm else gym.make(FLAGS.env)
     # self.env = gym.make(FLAGS.env)
     
     self.env.monitor.start(FLAGS.outdir+'/monitor/',video_callable=lambda _: False)
@@ -99,7 +98,7 @@ class Experiment:
       observation, reward, term, info = self.env.step(action)
       term = (t >= FLAGS.tmax) or term
 
-      r_f = self.env.filter_reward(reward)
+      r_f = self.env.filter_reward(reward) if FLAGS.autonorm else reward
       self.agent.observe(r_f,term,observation,test = test and not FLAGS.tot)
 
       if test:

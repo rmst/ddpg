@@ -14,17 +14,32 @@ l1 = 400 # dm 400
 l2 = 300 # dm 300
 
 
+def conv(x, W, b, stride = 4):
+  c = conv2d(x_image, filter = W, strides = [1, stride, stride, 1], padding = 'VALID')
+  z = c + b
+  y = tf.nn.relu(z)
+  return y
+
+
+
 def theta_p(dimO,dimA):
-  dimO = dimO[0]
-  dimA = dimA[0]
   with tf.variable_scope("theta_p"):
-    return [tf.Variable(fanin_init([dimO,l1]),name='1w'),
-            tf.Variable(fanin_init([l1],dimO),name='1b'),
-            tf.Variable(fanin_init([l1,l2]),name='2w'),
-            tf.Variable(fanin_init([l2],l1),name='2b'),
-            tf.Variable(tf.random_uniform([l2,dimA],-3e-3,3e-3),name='3w'),
-            tf.Variable(tf.random_uniform([dimA],-3e-3,3e-3),name='3b')]
-  
+
+    if np.ndim(dimO) > 1:
+      def xavier():
+        return tf.contrib.layers.xavier_initializer_conv2d() 
+      #TODO: continue
+
+    else:
+      dimO = dimO[0]
+      dimA = dimA[0]
+      return [tf.Variable(fanin_init([dimO,l1]),name='1w'),
+              tf.Variable(fanin_init([l1],dimO),name='1b'),
+              tf.Variable(fanin_init([l1,l2]),name='2w'),
+              tf.Variable(fanin_init([l2],l1),name='2b'),
+              tf.Variable(tf.random_uniform([l2,dimA],-3e-3,3e-3),name='3w'),
+              tf.Variable(tf.random_uniform([dimA],-3e-3,3e-3),name='3b')]
+    
 def policy(obs,theta,name='policy'):
   with tf.variable_op_scope([obs],name,name):
     h0 = tf.identity(obs,name='h0-obs')

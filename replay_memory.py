@@ -38,29 +38,32 @@ class ReplayMemory:
   
   def minibatch(self,size):
     # sample uniform random indexes
-    indices = np.zeros(size,dtype=np.int)
-    for k in range(size):
-      # find random index 
-      invalid = True
-      while invalid:
-        # sample index ignore wrapping over buffer
-        i = random.randint(0, self.n-2)
-        # if i-th sample is current one or is terminal: get new index
-        if i != self.i and not self.terminals[i]:
-          invalid = False
+    # indices = np.zeros(size,dtype=np.int)
+    # for k in range(size):
+    #   # find random index 
+    #   invalid = True
+    #   while invalid:
+    #     # sample index ignore wrapping over buffer
+    #     i = random.randint(0, self.n-2)
+    #     # if i-th sample is current one or is terminal: get new index
+    #     if i != self.i and not self.terminals[i]:
+    #       invalid = False
       
-      indices[k] = i
-      #print i
-      #print self.i
-    
+    #   indices[k] = i
+    #print i
+    #print self.i
+
+    indices = np.random.randint(0, self.n-2, size)
+  
     o = self.observations[indices,...]
     a = self.actions[indices]
     r = self.rewards[indices]
+    t = self.terminals[indices]
     o2 = self.observations[indices+1,...]
-    t2 = self.terminals[indices+1]
+    # t2 = self.terminals[indices+1] # to return t2 instead of t was a mistake
     info = self.info[indices,...]
 
-    return o, a, r, o2, t2, info
+    return o, a, r, t, o2, info
     
   def __repr__(self):
     indices = range(0,self.n)
