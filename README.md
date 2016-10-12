@@ -34,7 +34,7 @@ If you want to run in the cloud or a university cluster [this](https://github.co
 
 Example:
 ```bash
-python dashboard.py --exdir ../ddpg-results
+python dashboard.py --exdir ../ddpg-results/+
 ```
 Enter `python dashboard.py -h` to get a complete overview.
 
@@ -48,3 +48,10 @@ Enter `python dashboard.py -h` to get a complete overview.
 ### Improvements beyond the original paper
 - [Output normalization](http://www0.cs.ucl.ac.uk/staff/d.silver/web/Publications_files/popart.pdf) – the main reason for divergence are variations in return scales. Output normalization would probably solve this.
 - [Prioritized experience replay](http://arxiv.org/abs/1511.05952) – faster learning, better performance especially with sparse rewards – *Please write if you have/know of an implementation!*
+
+
+### Advaned Usage
+Remote execution:
+```bash
+python run.py --outdir your_username@remotehost.edu:/some/remote/directory/+ --env InvertedDoublePendulum-v1
+```

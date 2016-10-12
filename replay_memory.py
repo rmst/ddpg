@@ -98,7 +98,7 @@ if __name__ == '__main__':
     rm.enqueue(i,i%3==0,i,i,i)
   
   for i in range(1000):
-    o, a, r, o2, t2, info = rm.minibatch(10)
+    o, a, r, t, o2, info = rm.minibatch(10)
     assert all(o == o2-1),"error: o and o2"
     assert all(o != s-1) , "error: o wrap over rm. o = "+str(o) 
     assert all(o2 != 0) , "error: o2 wrap over rm"

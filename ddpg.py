@@ -25,7 +25,6 @@ rm_size = 1000000
 rm_dtype = 'float32'
 threads = 4
 
-
 # DDPG Agent
 # 
 class Agent:

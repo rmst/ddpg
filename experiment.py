@@ -18,8 +18,6 @@ flags.DEFINE_float('autodel', 0., 'auto delete experiments terminating before DE
 flags.DEFINE_boolean('gdb',False, 'open gdb on error')
 flags.DEFINE_boolean('fulltrace',False, 'display full traceback on error')
 
-
-
 def run(main=None):
   argv = sys.argv
   f = flags.FLAGS
@@ -28,54 +26,59 @@ def run(main=None):
   script = sys.modules['__main__'].__file__
   scriptdir, scriptfile = os.path.split(script)
 
-  if FLAGS.outdir[-1] == '+':
-    exdir = FLAGS.outdir[:-1]
-    outdir = create(scriptdir, exdir)
-    i = argv.index('--outdir')
-    argv[i+1] = outdir # TODO: handle --outdir=... case
-    FLAGS.outdir = outdir
+  f,n = os.path.split(FLAGS.outdir)
 
-  elif not os.path.exists(FLAGS.outdir):
-    os.mkdir(FLAGS.outdir)
+  if n == '+':
+    outdir = create(scriptdir, f)
+    i = argv.index('--outdir') # TODO: handle --outdir=... case
+    argv[i+1] = outdir 
+    FLAGS.outdir = outdir
+  else:
+    create(scriptdir, f, n)
 
   print("outdir: " + FLAGS.outdir)
 
   script = (FLAGS.outdir + '/' + scriptfile) if FLAGS.copy else script
   argv[0] = script
 
-  if FLAGS.job:
+  if remote(FLAGS.outdir):
+    adr, outdir = FLAGS.outdir.split(':')
+    i = argv.index('--outdir') # TODO: handle --outdir=... case
+    argv[i+1] = outdir
+    argv[0] = outdir + '/' + scriptfile
+    # print(argv)
+    subprocess.call(['ssh', adr, 'python'] + argv)
+    sys.exit()
+
+  elif FLAGS.job:
     argv.remove('--job')
     submit(argv, FLAGS.outdir)
   else:
     main = main or sys.modules['__main__'].main
     Executor(main, FLAGS.outdir).execute()
 
-def create(run_folder,exfolder):
+def create(run_folder,exfolder,exname = None):
   ''' create unique experiment folder '''
-  
-  # generate unique name and create folder
-  if not os.path.exists(exfolder): os.mkdir(exfolder)
 
-  dstr = datetime.now().strftime('%Y%m%d_%H%M_%S')
+  if not exname:
+    # generate unique name and create folder
+    mkdir(exfolder)
 
-  # rf = os.path.basename(run_folder)
-  #basename =  dstr+'_'+rf+'_'+ FLAGS.tag
-  basename =  '_'.join([dstr,FLAGS.env,FLAGS.tag])
-
-  name = basename
-  i = 1
-  while name in os.listdir(exfolder):
-    name = basename + '_' + str(i)
-    i = i+1
-    if i > 100:
-      raise RuntimeError('Could not create unique experiment folder')
+    dstr = datetime.now().strftime('%Y%m%d_%H%M_%S')
+    exname =  '_'.join([dstr,FLAGS.env,FLAGS.tag])
       
-  path = os.path.join(exfolder, name)
-  os.mkdir(path)
+
+  path = os.path.join(exfolder, exname)
+
+  mkdir(path)
 
   # copy program to folder
+  if remote(path):
+    FLAGS.copy = True
+
   if FLAGS.copy:
-    rcopy(run_folder,path,symlinks=True,ignore='.*')
+    copy(run_folder,path)
+    
 
   return path
 
@@ -229,6 +232,32 @@ def xread(path):
 # Util
 #
 
+def remote(path):
+  return path.find('@') != -1
+
+def exists(path):
+  if remote(path):
+    adr, dir = path.split(':')
+    return subprocess.check_output(["ssh",adr, "ls", dir]).split()
+  else:
+    return os.path.exists(path)
+
+def mkdir(path):
+  if remote(path):
+    adr, dir = path.split(':')
+    with open(os.devnull, 'w') as nl:
+      subprocess.call(["ssh",adr,"mkdir",dir], stdout=nl, stderr=nl)
+  elif not os.path.exists(path):
+    os.mkdir(path)
+
+def copy(src,dst):
+  if remote(dst):
+    # Example call: scp -r foo your_username@remotehost.edu:/some/remote/directory/bar
+    print("Transfering files ...")
+    subprocess.call(['rsync', '-r', src + '/', dst]) # scp / rsync
+  else:
+    rcopy(src,dst,symlinks=True,ignore='.*')
+
 def rcopy(src, dst, symlinks = False, ignore = None):
   import shutil
   ign = shutil.ignore_patterns(ignore)
@@ -277,3 +306,4 @@ def lst(root): return os.listdir(root).sort()
 def get(path):
   with open(path,'rb') as f:
     return pickle.load(f)
+
