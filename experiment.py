@@ -33,6 +33,10 @@ def run(main=None):
     i = argv.index('--outdir') # TODO: handle --outdir=... case
     argv[i+1] = outdir 
     FLAGS.outdir = outdir
+    try:
+      argv.remove('--copy')
+    except:
+      pass
   else:
     create(scriptdir, f, n)
 
