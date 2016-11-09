@@ -252,7 +252,7 @@ def mkdir(path):
     with open(os.devnull, 'w') as nl:
       subprocess.call(["ssh",adr,"mkdir",dir], stdout=nl, stderr=nl)
   elif not os.path.exists(path):
-    os.mkdir(path)
+    os.makedirs(path)
 
 def copy(src,dst):
   if remote(dst):
