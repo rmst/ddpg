@@ -1,4 +1,7 @@
 # Deep Deterministic Policy Gradient
+
+__Warning: This repo is no longer maintained. For a more recent (and improved) implementation of DDPG see https://github.com/openai/baselines/tree/master/baselines/ddpg .__
+
 Paper: ["Continuous control with deep reinforcement learning" - TP Lillicrap, JJ Hunt et al., 2015](http://arxiv.org/abs/1509.02971)
 
 <table>
